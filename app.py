@@ -1,37 +1,92 @@
 import streamlit as st
-import time
+import speech_recognition as sr
+import re
 
-# Simulating speech-to-text (real implementation would require integration with a speech recognition API)
-def simulate_speech_to_text():
-    st.session_state['name'] = "John Doe"
-    st.session_state['email'] = "john.doe@example.com"
-    st.session_state['age'] = 28
-    st.session_state['gender'] = "Male"
-    st.session_state['address'] = "1234 Elm Street"
+# Speech-to-text function using Google Web Speech API
+def speech_to_text():
+    recognizer = sr.Recognizer()
+    microphone = sr.Microphone()
 
-# Handling form submission
-def handle_submit():
-    st.success("Form Submitted!")
-    st.write("## Submitted Information")
-    st.write(f"**Name:** {st.session_state.get('name')}")
-    st.write(f"**Email:** {st.session_state.get('email')}")
-    st.write(f"**Age:** {st.session_state.get('age')}")
-    st.write(f"**Gender:** {st.session_state.get('gender')}")
-    st.write(f"**Address:** {st.session_state.get('address')}")
+    with microphone as source:
+        st.info("Listening now...")  # Notification displayed when listening starts
+        recognizer.adjust_for_ambient_noise(source)  # Adjusts for background noise
+        audio = recognizer.listen(source)  # Capture audio from the microphone
 
-# Main UI
-st.title("Speech-to-Form Example")
+    try:
+        # Recognize speech using Google Web Speech API
+        text = recognizer.recognize_google(audio)
+        st.success("Speech recognized successfully!")
+        return text
+    except sr.RequestError:
+        st.error("API unavailable or unresponsive.")
+        return None
+    except sr.UnknownValueError:
+        st.error("Unable to recognize speech. Please try again.")
+        return None
 
-# Input fields
-name = st.text_input("Name", key="name", placeholder="Enter your name")
-email = st.text_input("Email", key="email", placeholder="Enter your email")
-age = st.number_input("Age", min_value=0, key="age")
-gender = st.selectbox("Gender", ["Male", "Female", "Other"], key="gender")
-address = st.text_area("Address", key="address", placeholder="Enter your address")
+st.title("Speech-to-Text Form with Care Scribe")
 
-# Buttons: Speak and Submit
-speak_button = st.button("Speak", on_click=simulate_speech_to_text)
-submit_button = st.button("Submit", on_click=handle_submit)
+def set_text_fields(data):
+    # Ensure the data has expected keys
+    name = st.text_input("Name", value=data.get("Name", ""))
+    email = st.text_input("Email", value=data.get("Email", ""))
+    age = st.text_input("Age", value=data.get("Age", ""))
+    gender = st.text_input("Gender", value=data.get("Gender", ""))
+    address = st.text_input("Address", value=data.get("Address", ""))
+    return name, email, age, gender, address
 
-# Instruction message for the Speak button
-st.info("Click 'Speak' to simulate speech recognition and auto-fill the form fields. After that, you can modify any of the fields before submitting.")
+# Input fields for the form
+name = st.text_input("Name")
+email = st.text_input("Email")
+age = st.text_input("Age")
+gender = st.text_input("Gender")
+address = st.text_input("Address")
+
+def extract_details(text):
+    email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
+    email = re.findall(email_pattern, text)
+
+    age_pattern = r'(\b\d{1,2}\b)\s?(years old|yrs|years|age)?'
+    age = re.findall(age_pattern, text)
+
+    name_pattern = r'\b[A-Z][a-z]+\s[A-Z][a-z]+\b'
+    name = re.findall(name_pattern, text)
+
+    gender_pattern = r'\b(Male|Female|Other|male|female|other)\b'
+    gender = re.findall(gender_pattern, text)
+
+    address_pattern = r'\d{1,4}\s\w+\s(?:Street|Avenue|Road|Boulevard|Lane)\b'
+    address = re.findall(address_pattern, text)
+
+    details = {
+        'Name': name[0] if name else None,
+        'Age': age[0] if age else None,
+        'Address': address[0] if address else None,
+        'Gender': gender[0] if gender else None,
+        'Email': email[0] if email else None
+    }
+    
+    return details
+
+# Create columns to align buttons (Speak and Submit) horizontally
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button("Speak"):
+        spoken_text = speech_to_text()
+        if spoken_text:
+            st.write(f"**Recognized Speech:** {spoken_text}")  # Display recognized speech
+            extracted_details = extract_details(spoken_text)
+            name, email, age, gender, address = set_text_fields(extracted_details)
+
+with col2:
+    submit_button = st.button("Submit")
+
+# On form submission
+if submit_button:
+    st.success("Form submitted successfully!")
+    st.write(f"**Name:** {name}")
+    st.write(f"**Email:** {email}")
+    st.write(f"**Age:** {age}")
+    st.write(f"**Gender:** {gender}")
+    st.write(f"**Address:** {address}")
